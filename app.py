@@ -21,12 +21,12 @@ tree = app_commands.CommandTree(client)
 http_session = None
 
 async def queue_task(prompt):
-    prompt = prompt.strip()
-    if len(prompt) > 1000:
-        prompt = prompt[:1000]
+    p = prompt.strip()
+    if len(p) > 1000:
+        p = p[:1000]
     try:
         async with asyncio.timeout(20):
-            async with http_session.post(f"{HF_API}/generate", json={"prompt": prompt}) as r:
+            async with http_session.post(f"{HF_API}/generate", json={"prompt": p}) as r:
                 if r.status != 202:
                     try:
                         j = await r.json()
@@ -41,12 +41,11 @@ async def queue_task(prompt):
 async def wait_for_result(task_id, total_timeout=120):
     if not task_id:
         return "invalid"
-    start = asyncio.get_event_loop().time()
+    start = asyncio.get_running_loop().time()
     try:
         while True:
             await asyncio.sleep(1)
-            elapsed = asyncio.get_event_loop().time() - start
-            if elapsed > total_timeout:
+            if asyncio.get_running_loop().time() - start > total_timeout:
                 return "timeout"
             try:
                 async with asyncio.timeout(10):
@@ -54,11 +53,12 @@ async def wait_for_result(task_id, total_timeout=120):
                         if r2.status == 404:
                             return "task not found"
                         j = await r2.json()
-                        status = j.get("status", "")
-                        if status == "completed":
+                        s = j.get("status", "")
+                        if s == "completed":
                             return j.get("output", "")
-                        if status in ("error", "failed"):
-                            return j.get("output", "") or status
+                        if s in ("error", "failed"):
+                            out = j.get("output", "")
+                            return out if out else s
             except asyncio.TimeoutError:
                 continue
             except:
@@ -71,11 +71,11 @@ async def wait_for_result(task_id, total_timeout=120):
 async def ai_command(interaction, prompt: str):
     await interaction.response.defer()
     try:
-        task_id = await queue_task(prompt)
-        if not task_id:
+        tid = await queue_task(prompt)
+        if not tid:
             await interaction.edit_original_response(content="request error")
             return
-        result = await wait_for_result(task_id, total_timeout=120)
+        result = await wait_for_result(tid, total_timeout=120)
         if not result:
             await interaction.edit_original_response(content="no output")
             return
@@ -89,29 +89,30 @@ async def ai_command(interaction, prompt: str):
 @tree.command(name="queue")
 async def queue_command(interaction, prompt: str):
     async with task_lock:
-        task_id = str(uuid.uuid4())
-        pending_tasks[task_id] = prompt.strip()[:1000]
-    await interaction.response.send_message("Task added: " + task_id)
+        tid = str(uuid.uuid4())
+        pending_tasks[tid] = prompt.strip()[:1000]
+    await interaction.response.send_message("Task added: " + tid)
 
 @tree.command(name="runqueue")
 async def runqueue(interaction):
     await interaction.response.send_message("Running queue")
     async with task_lock:
         keys = list(pending_tasks.keys())
-    for task_id in keys:
+    for tid in keys:
         async with task_lock:
-            prompt = pending_tasks.get(task_id)
+            p = pending_tasks.get(tid)
         try:
-            real_task = await queue_task(prompt)
+            real_task = await queue_task(p)
             result = await wait_for_result(real_task, total_timeout=120)
             if not result:
                 result = "no output"
-            await interaction.followup.send("Task " + task_id + ": " + (result if len(result) < 1900 else result[:1890] + "..."))
+            msg = result if len(result) < 1900 else result[:1890] + "..."
+            await interaction.followup.send("Task " + tid + ": " + msg)
         except:
-            await interaction.followup.send("Task " + task_id + ": error")
+            await interaction.followup.send("Task " + tid + ": error")
         async with task_lock:
-            if task_id in pending_tasks:
-                del pending_tasks[task_id]
+            if tid in pending_tasks:
+                del pending_tasks[tid]
 
 @tree.command(name="ping")
 async def ping(interaction):
