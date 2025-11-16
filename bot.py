@@ -5,6 +5,11 @@ import aiohttp
 import discord
 from discord import app_commands
 
+curl -v https://kakspex-dc-ai.hf.space/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"test"}'
+
+
 HF_API = os.environ.get("HF_API", "https://kakspex-dc-ai.hf.space")
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if not TOKEN:
