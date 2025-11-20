@@ -78,9 +78,9 @@ async def ai_command(interaction, prompt: str):
         r = r[:1990] + "..."
     await interaction.edit_original_response(content=r)
 
-@tree.command(name="ping")
+@tree.command(name="print")
 async def ping(interaction):
-    await interaction.response.send_message("Pong")
+    await interaction.response.send_message("Hello World!")
 
 @client.event
 async def on_ready():
